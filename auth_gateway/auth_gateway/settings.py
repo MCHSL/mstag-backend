@@ -61,6 +61,17 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'auth_gateway.urls'
 
+CACHES = {
+	'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'default_cache',
+    },
+    'chat_cooldown': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'chat_cooldown_cache',
+    }
+}
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',

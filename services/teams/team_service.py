@@ -8,6 +8,8 @@ from communications.request_handler import ServiceRequestHandler
 from communications.notifications import send_notification
 from communications.profile import request_profile
 from communications.rpc import resolve
+from communications import chat
+
 
 class SetEncoder(json.JSONEncoder):
 	def default(self, obj):
@@ -17,9 +19,11 @@ class SetEncoder(json.JSONEncoder):
 			return obj.pk
 		return json.JSONEncoder.default(self, obj)
 
+
 teams = {}
 players = {}
 next_id = 1
+
 
 class Team:
 	def __init__(self, leader):
@@ -35,14 +39,12 @@ class Team:
 			self.add_member(leader)
 
 	def add_member(self, member):
-		print("Adding team member")
 		if isinstance(member, int):
 			member = players[member]
 		member.invites.discard(self)
 		self.invitees.discard(member)
 		if member.team:
 			member.team.remove_member(member)
-		print("Adding to members")
 		self.members.add(member)
 		member.team = self
 
@@ -68,10 +70,12 @@ class Team:
 		self.invitees.discard(player)
 		player.invites.discard(self)
 
+
 def create_team(leader):
 	team = Team(leader)
 	teams[team.pk] = team
 	return team
+
 
 class Player:
 	def __init__(self, id):
@@ -85,12 +89,15 @@ class Player:
 	def __repr__(self):
 		return str(self.pk)
 
+
 def on_request(message):
 	playerid = message.get("id", None)
 	if playerid is not None:
 		player = players.get(playerid, None)
 		if not player:
 			player = players[playerid] = Player(playerid)
+	else:
+		player = None
 	team = message.get("team", None)
 	if team is not None:
 		team = teams.get(team, None)
@@ -110,8 +117,15 @@ def on_request(message):
 		remove_player_from_everything(player)
 	elif message["type"] == "id_online":
 		pass
+	elif message["type"] == "get_team_invitations_for_player":
+		return get_team_invites(player)
 	else:
 		log_error("Unknown message type: " + message["type"])
+
+
+def get_team_invites(player):
+	return player.invites
+
 
 def remove_player_from_everything(player):
 	log_debug("Removing player from everything")
@@ -119,11 +133,18 @@ def remove_player_from_everything(player):
 	if player.team:
 		for member in player.team.members:
 			if member != player:
-				send_notification(member, "teammate left", teammate_name=prof["username"])
+				send_notification(member,
+				                  "teammate left",
+				                  teammate_name=prof["username"])
+				chat.send_direct_chat_message(
+				    member, "*", "party",
+				    prof["username"] + " has left your party.")
 		player.team.remove_member(player)
 	xd = list(player.invites)
 	for team in xd:
-		send_notification(team.leader, "invitation declined", username=prof["username"])
+		send_notification(team.leader,
+		                  "invitation declined",
+		                  username=prof["username"])
 		team.remove_invite(player)
 
 
@@ -141,6 +162,7 @@ def remove_player_from_team(player):
 	if player.team is not None:
 		player.team.remove_member(player)
 
+
 def remove_player_from_invitations(player, team):
 	log_debug(f"Removing player {player} from team {team} invitations")
 	team.remove_invite(player)
@@ -148,21 +170,26 @@ def remove_player_from_invitations(player, team):
 
 def get_player_team(player):
 	log_debug(f"Getting team for player {player}")
+	print(f"Getting team for player {player}")
 	try:
 		team = player.team
+		print(team)
 		if not team:
-			return {}
+			return None
 		return team.__dict__
 	except KeyError:
-		return {}
+		return None
 
 
 def get_team(team):
 	log_debug(f"Getting team {team}")
+	if not team:
+		return None
 	try:
 		return team.__dict__
 	except KeyError:
-		return {}
+		return None
+
 
 def invite_player_to_team(player, team):
 	log_debug("Inviting player to team")
@@ -171,5 +198,10 @@ def invite_player_to_team(player, team):
 	except KeyError:
 		pass
 
-rrh = ServiceRequestHandler("teams", "team_queue", on_request, custom_json_encoder=SetEncoder, broadcasts=["presence"])
+
+rrh = ServiceRequestHandler("teams",
+                            "team_queue",
+                            on_request,
+                            custom_json_encoder=SetEncoder,
+                            broadcasts=["presence"])
 rrh.run()

@@ -1,12 +1,15 @@
+import json
 import sys
-sys.path.append("..")
+import uuid
 
 import pika
-import uuid
-import json
-from communications.rpc import RPCClient
+
+from communications.rpc import RPCClient, RPCRequest
+
+sys.path.append("..")
 
 __rpc = RPCClient("auth_queue")
 
-def get_id_from_token(token):
+
+def get_id_from_token(token: str) -> RPCRequest:
 	return __rpc.request({"type": "get_id_from_token", "token": token})

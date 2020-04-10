@@ -9,3 +9,4 @@ start cmd.exe /k "cd services\auth && C:\mstag-python\scripts\activate && python
 start cmd.exe /k "cd services\presence && C:\mstag-python\scripts\activate && python presence_service.py"
 start cmd.exe /k "cd services\chat && C:\mstag-python\scripts\activate && python chat_service.py"
 start cmd.exe /k "cd services\teams && C:\mstag-python\scripts\activate && python team_service.py"
+start cmd.exe /k "cd services\game && C:\mstag-python\scripts\activate && python game_service_2.py"

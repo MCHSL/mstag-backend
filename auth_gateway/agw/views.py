@@ -1,178 +1,234 @@
+import datetime
 import sys
-sys.path.append("..")
 
+from django.core.cache import caches
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
+from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework import permissions
-from django.http import HttpResponse, JsonResponse
-from agw.models import Player
-import datetime
 
-from communications import profile
-from communications.rpc import resolve
+from agw.models import Player  # type: ignore
+from common.lazy import LazyPlayer, LazyTeam
+from common.logger import *
+from communications import chat, game, profile, team
 from communications.notifications import send_notification
 from communications.presence import is_online
-from communications import chat
-from communications import team
+from communications.rpc import resolve
 
-from common.logger import *
+sys.path.append("..")
 
 times = []
 
+
+def lazy_user(fn):
+	def wrapper(request, *args, **kwargs):
+		request.user = LazyPlayer(request.user.pk,
+		                          precached_username=request.user.username)
+		return fn(request, *args, **kwargs)
+
+	return wrapper
+
+
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
+@permission_classes((permissions.IsAuthenticated, ))
 def get_my_profile(request):
 	log_info(f"requesting own profile {request.user.pk}")
 	info = resolve(profile.request_profile(request.user.pk))
 	return JsonResponse(info, status=200)
 
-@api_view(['GET'])
-@permission_classes((permissions.AllowAny,))
-def get_user_profile(request, pk):
-	#log_info(f"requesting user profile {pk}")
-	#start_time = time.time_ns()
-	info = resolve(profile.request_profile(pk))
-	#times.append(time.time_ns() - start_time)
-	return JsonResponse(info, status=200)
 
 @api_view(['GET'])
-@permission_classes((permissions.AllowAny,))
+@permission_classes((permissions.AllowAny, ))
+def get_user_profile(request, user):
+	info = resolve(profile.request_profile(user))
+	return JsonResponse(info, status=200)
+
+
+@api_view(['GET'])
+@permission_classes((permissions.AllowAny, ))
 def make_error(request):
 	return HttpResponse(status=500)
 
-@api_view(['GET'])
-@permission_classes((permissions.AllowAny,))
-def get_perf(request):
-	return HttpResponse(sum(times)/len(times), status=200)
 
 @api_view(['GET'])
-@permission_classes((permissions.AllowAny,))
+@permission_classes((permissions.AllowAny, ))
+def get_perf(request):
+	return HttpResponse(sum(times) / len(times), status=200)
+
+
+@api_view(['GET'])
+@permission_classes((permissions.AllowAny, ))
 def get_config(request):
-	if request.method == "GET":
-		return Response({'chat': 'ws://25.64.141.174:8768', 'notification': 'ws://25.64.141.174:8767'})
+	return JsonResponse({
+	    'chat': 'ws://25.64.141.174:8768',
+	    'notification': 'ws://25.64.141.174:8767'
+	})
+
 
 def now():
-	return int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp() * 1000)
+	return int(
+	    datetime.datetime.now(tz=datetime.timezone.utc).timestamp() * 1000)
+
 
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
 def fetch_friends(request):
-	friends = resolve(profile.get_friends(request.user))
 	friend_objects = []
-	print("GOT FRIENDS")
-	friends = resolve([profile.request_profile(friend) for friend in friends])
-	print(friends)
-	for friend in friends:
-		friend_objects.append({"id": friend["id"], "username": friend["username"], "last_seen": int((now()-friend["last_seen"])/1000), "is_online": resolve(is_online(friend["id"]))})
-	print("RETURNING")
+	for friend in request.user.friends:
+		friend_objects.append({
+		    "id": friend.pk,
+		    "username": friend.username,
+		    "last_seen": friend.last_seen_delta,
+		    "is_online": friend.online
+		})
 	return JsonResponse(friend_objects, safe=False)
 
-@api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def add_friend(request, pk):
-	if request.user.pk == pk:
-		return HttpResponse(status=404)
-	try:
-		invitee = Player.objects.get(pk=pk)
-	except Player.DoesNotExist:
-		return HttpResponse(status=404)
-	friends, friend_invites = resolve(profile.get_friends(request.user), profile.get_friend_invites(pk))
-	print(friends)
-	print(friend_invites)
-	if pk in friends:
-		send_notification(request.user, "already in friends", username=invitee.username)
-		return HttpResponse(status=404)
-	if request.user.pk in friend_invites:
-		send_notification(request.user, "already in friend invites", username=invitee.username)
-		return HttpResponse(status=404)
-	send_notification(invitee, "friend invite", username=request.user.username, id=request.user.pk)
-	send_notification(request.user, "friend invite sent", username=invitee.username)
-	profile.invite_friend(pk, request.user)
-	return HttpResponse()
 
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def remove_friend(request, pk):
-	friends = resolve(profile.get_friends(request.user))
-	if pk not in friends:
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def invite_friend(request, invitee):
+	if request.user == invitee:
 		return HttpResponse(status=403)
-	send_notification(pk, "removed from friends", username=request.user.username)
-	resolve(profile.remove_friend(pk, request.user))
-	user_team = resolve(team.get_team_for_player(request.user))
-	if pk in user_team["members"]:
-		remove_from_team(pk)
+	if invitee in request.user.friends:
+		request.user.notify("already in friends", username=invitee.username)
+		return HttpResponse(status=412)
+	print(request.user)
+	print(invitee.friend_invites)
+	if request.user in invitee.friend_invites:
+		request.user.notify("already in friend invites",
+		                    username=invitee.username)
+		return HttpResponse(status=412)
+	invitee.notify("friend invite",
+	               username=request.user.username,
+	               id=request.user.pk)
+	request.user.notify("friend invite sent", username=invitee.username)
+	profile.invite_friend(invitee, request.user)
 	return HttpResponse()
 
-@api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def accept_friend(request, pk):
-	send_notification(pk, "friend invite accepted", username=request.user.username)
-	resolve(profile.accept_friend_invite(request.user, pk))
-	return HttpResponse()
 
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def reject_friend(request, pk):
-	send_notification(pk, "friend invite declined", username=request.user.username)
-	resolve(profile.reject_friend_invite(request.user, pk))
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def remove_friend(request, removee):
+	if removee not in request.user.friends:
+		return HttpResponse(status=403)
+	removee.notify("removed from friends", username=request.user.username)
+	resolve(profile.remove_friend(removee, request.user))
+	if request.user.team and removee in request.user.team.members:
+		remove_from_team(removee)
 	return HttpResponse()
 
+
 @api_view(['GET'])
-@permission_classes((permissions.AllowAny,))
+@permission_classes((permissions.IsAuthenticated, ))
+def accept_friend(request, acceptee):
+	resolve(profile.accept_friend_invite(request.user, acceptee))
+	acceptee.notify("friend invite accepted", username=request.user.username)
+	return HttpResponse()
+
+
+@api_view(['GET'])
+@permission_classes((permissions.IsAuthenticated, ))
+def reject_friend(request, rejectee):
+	resolve(profile.reject_friend_invite(request.user, rejectee))
+	rejectee.notify("friend invite declined", username=request.user.username)
+	return HttpResponse()
+
+
+@api_view(['GET'])
+@permission_classes((permissions.AllowAny, ))
 def check_user_exists(request, name):
 	prof = resolve(profile.request_profile_by_name(name))
 	if not prof:
 		return HttpResponse({"exists": False}, status=200)
 	return JsonResponse({"exists": True, "id": prof["id"]}, status=200)
 
+
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
+@permission_classes((permissions.IsAuthenticated, ))
 def retrieve_notifications(request):
 	friend_reqs = resolve(profile.get_friend_invites(request.user))
 	for friend in friend_reqs:
 		username = Player.objects.get(pk=friend).username
-		send_notification(request.user, "friend invite", username=username, id=friend)
+		send_notification(request.user,
+		                  "friend invite",
+		                  username=username,
+		                  id=friend)
 	return HttpResponse()
+
+
+def check_cooldown(ctype, who):
+	try:
+		if caches[ctype + "_cooldown"].get(who) <= time.time():
+			caches[ctype + "_cooldown"].set(who, time.time() + 1)
+			return True
+		return False
+	except TypeError:
+		caches[ctype + "_cooldown"].set(who, time.time() + 1)
+		return True
+
 
 @api_view(['POST'])
-@permission_classes((permissions.IsAuthenticated,))
-def send_chat_message(request):
-	chat.send_chat_message(request.user.username, request.data["message"])
-	return HttpResponse()
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def send_global_chat_message(request):
+	if check_cooldown("chat", request.user.username):
+		request.user.chat_global(request.data["message"])
+		return HttpResponse()
+	return HttpResponse(status=429)
+
+
+@api_view(['POST'])
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def send_team_chat_message(request):
+	if check_cooldown("chat", request.user.username):
+		request.user.chat_team(request.data["message"])
+		return HttpResponse()
+	return HttpResponse(status=429)
+
 
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
 def get_team(request):
-	user_team = resolve(team.get_team_for_player(request.user))
-	if not user_team:
+	if not request.user.team:
 		return JsonResponse([], safe=False)
 	else:
-		teammates = resolve([profile.request_profile(tm) for tm in user_team["members"]])
-		leader = None
-		for tm in teammates:
-			if tm["id"] == user_team["leader"]:
-				leader = tm
-				break
+		teammates = resolve([
+		    profile.request_profile(tm)
+		    for tm in request.user.team.member_pks()
+		] + [profile.request_profile(request.user.team.leader)
+		     ])  # Parallel profile lookup
+		leader = teammates.pop()
 		return JsonResponse({"leader": leader, "members": teammates})
 
+
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def invite_to_team(request, pk):
-	user_team = team.get_or_create_team(request.user)
-	if user_team["leader"] != request.user.pk:
-		send_notification(request.user, "not the leader")
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def invite_to_team(request, invitee):
+	user_team = request.user.create_team()
+	if user_team.leader != request.user:
+		request.user.notify("not the leader")
 		return HttpResponse(status=403)
-	if pk in user_team["invitees"]:
-		send_notification(request.user, "already invited to team")
+	if invitee in user_team.invitees:
+		request.user.notify("already invited to team")
 		return HttpResponse(status=412)
-	if pk in user_team["members"]:
-		send_notification(request.user, "already in team")
+	if invitee in user_team.members:
+		request.user.notify("already in team")
 		return HttpResponse(status=412)
-	team.invite_player_to_team(pk, user_team["pk"])
-	send_notification(pk, "invited to team", id=user_team["pk"], inviter_name=request.user.username)
-	send_notification(request.user, "invite sent", text="You have invited a player to your team")
+	resolve(team.invite_player_to_team(invitee, user_team))
+	invitee.notify("invited to team",
+	               id=user_team.pk,
+	               inviter_name=request.user.username)
+	request.user.notify("invite sent",
+	                    text="You have invited a player to your team")
 	return HttpResponse()
+
 
 def remove_from_team(pk, kicked=False):
 	if not isinstance(pk, int):
@@ -181,52 +237,72 @@ def remove_from_team(pk, kicked=False):
 	user_team = resolve(team.get_team_for_player(pk))
 	if not user_team:
 		return
-	team.remove_player_from_team(pk)
+	resolve(team.remove_player_from_team(pk))
 	if kicked:
 		for member in user_team["members"]:
 			if member != pk:
-				send_notification(member, "teammate kicked", teammate_name=username)
+				send_notification(member,
+				                  "teammate kicked",
+				                  teammate_name=username)
+				chat.send_direct_chat_message(
+				    member, "*", "party", username + " has left your party.")
 		send_notification(pk, "kicked from team")
 	else:
 		for member in user_team["members"]:
 			if member != pk:
-				send_notification(member, "teammate left", teammate_name=username)
+				send_notification(member,
+				                  "teammate left",
+				                  teammate_name=username)
+				chat.send_direct_chat_message(
+				    member, "*", "party", username + " has left your party.")
 		send_notification(pk, "left team")
 
+
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def join_team(request, pk):
-	user_team = resolve(team.get_team(pk))
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def join_team(request, team_id):
+	user_team = LazyTeam(team_id)
 	if not user_team:
 		return HttpResponse(status=404)
 
-	if request.user.pk in user_team["invitees"]:
+	print(user_team.invitees)
+	if request.user in user_team.invitees:
 		remove_from_team(request.user)
-		for member in user_team["members"]:
-			send_notification(member, "new teammate", teammate_name=request.user.username)
-		send_notification(request.user, "team joined")
-		team.add_player_to_team(request.user, user_team["pk"])
+		resolve(team.add_player_to_team(request.user, user_team))
+		for member in user_team.members:
+			member.notify("new teammate", teammate_name=request.user.username)
+			chat.send_direct_chat_message(
+			    member, "*", "party",
+			    request.user.username + " has joined your party.")
+		request.user.notify("team joined")
 		return HttpResponse(status=200)
 
 	return HttpResponse(status=400)
 
+
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def decline_invitation(request, pk):
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def decline_invitation(request, team_id):
 	if request.method == "GET":
-		user_team = resolve(team.get_team(pk))
+		user_team = LazyTeam(team_id)
 		if not user_team:
 			return HttpResponse(status=404)
 
-		if request.user.pk in user_team["invitees"]:
-			send_notification(user_team["leader"], "invitation declined", username=request.user.username)
-			team.remove_player_from_invitations(request.user, user_team["pk"])
+		if request.user in user_team.invitees:
+			user_team.leader.notify("invitation declined",
+			                        username=request.user.username)
+			resolve(
+			    team.remove_player_from_invitations(request.user, user_team))
 			return HttpResponse(status=200)
 
 		return HttpResponse(status=400)
 
+
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
 def leave_team(request):
 	if request.method == "GET":
 		user_team = resolve(team.get_team_for_player(request.user))
@@ -236,13 +312,28 @@ def leave_team(request):
 		remove_from_team(request.user)
 		return HttpResponse(status=200)
 
+
 @api_view(['GET'])
-@permission_classes((permissions.IsAuthenticated,))
-def kick_from_team(request, pk):
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def kick_from_team(request, victim):
 	if request.method == "GET":
-		user_team = resolve(team.get_team_for_player(pk))
+		user_team = victim.team
 		if not user_team:
 			return HttpResponse(status=412)
 
-		remove_from_team(pk, True)
+		remove_from_team(victim, True)
 		return HttpResponse(status=200)
+
+
+@api_view(['GET'])
+@permission_classes((permissions.IsAuthenticated, ))
+@lazy_user
+def request_game(request):
+	if request.user.team:
+		if request.user.team.leader != request.user:
+			return HttpResponse(status=403)
+		resolve(game.reserve_lobby(request.user.team.members))
+		for member in request.user.team.members:
+			member.notify("starting game", address="ws://25.64.141.174:8765/1")
+	return HttpResponse("ws://25.64.141.174:8765/1")

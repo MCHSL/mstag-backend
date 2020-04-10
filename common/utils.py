@@ -4,7 +4,10 @@ def convert_to_pk(fn):
 		for arg in args:
 			if isinstance(arg, int):
 				newargs.append(arg)
-			else:
+			elif hasattr(arg, "pk"):
 				newargs.append(arg.pk)
+			else:
+				raise TypeError(repr(arg) + " is not convertible to int")
 		return fn(*newargs, **kwargs)
+
 	return wrapper
