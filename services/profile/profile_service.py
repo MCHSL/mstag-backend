@@ -158,6 +158,13 @@ def update_last_seen(user_id):
 	sql_conn.commit()
 
 
+def set_username(user_id, username):
+	log_debug(f"Updating username for {user_id}: {username}")
+	cursor.execute("UPDATE player_profile SET username = %s WHERE id = %s",
+	               (username, user_id))
+	sql_conn.commit()
+
+
 def on_request(msg):
 	#print(time.time_ns())
 
@@ -193,6 +200,9 @@ def on_request(msg):
 
 	elif msg["type"] == "id_online" or msg["type"] == "id_offline":
 		update_last_seen(msg["id"])
+
+	elif msg["type"] == "set_username":
+		set_username(msg["user"], msg["username"])
 
 	else:
 		raise Exception("UNHANDLED MESSAGE: " + str(msg))

@@ -74,3 +74,13 @@ def remove_friend(removee: int, remover: int) -> RPCRequest:
 	    "removee": removee,
 	    "remover": remover
 	})
+
+
+def set_username(user, username: str) -> RPCRequest:
+	if not isinstance(user, int):
+		user = user.pk
+	return __rpc.request({
+	    "type": "set_username",
+	    "user": user,
+	    "username": username
+	})

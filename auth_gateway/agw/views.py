@@ -1,5 +1,8 @@
 import datetime
 import sys
+import requests
+import random
+import math
 
 from django.core.cache import caches
 from django.http import HttpResponse, JsonResponse
@@ -7,6 +10,7 @@ from django.shortcuts import render
 from rest_framework import permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
 
 from agw.models import Player  # type: ignore
 from common.lazy import LazyPlayer, LazyTeam
@@ -28,6 +32,60 @@ def lazy_user(fn):
 		return fn(request, *args, **kwargs)
 
 	return wrapper
+
+
+@api_view(["POST"])
+@permission_classes((permissions.AllowAny, ))
+def login_google(request):
+	log_info(f"Logging in via google")
+	code = request.data["code"]
+	print(code)
+	r = requests.post(
+	    "https://oauth2.googleapis.com/token",
+	    data={
+	        "client_id":
+	        "758097201499-i301bgsnrfiu846gbuahl2kcq4qtmuht.apps.googleusercontent.com",
+	        "client_secret": "jMOyAcEoUgsj-QyNpYlg0G5l",
+	        "code": code,
+	        "grant_type": "authorization_code",
+	        "redirect_uri": "http://localhost:8080/oauth/google"
+	    })
+	response = r.json()
+	if not ("access_token" in response):
+		return HttpResponse(status=500)
+	r = requests.get("https://www.googleapis.com/userinfo/v2/me",
+	                 params={"access_token": response["access_token"]})
+	response = r.json()
+	email = response["email"]
+	user, created = Player.objects.get_or_create(email=email)
+	if (created):
+		user.username = "____TEMP_" + str(math.floor(random.random() * 10000))
+		user.save()
+		profile.create_profile(user, "")
+	token, created = Token.objects.get_or_create(user=user)
+	return JsonResponse({"token": token.key}, status=200)
+
+
+@api_view(['POST'])
+@permission_classes((permissions.IsAuthenticated, ))
+def set_username(request):
+	log_info(f"setting username {request.user.pk}")
+	if request.user.username and not request.user.username.startswith(
+	    "____TEMP_"):
+		log_info("Username already set")
+		return HttpResponse(status=403)
+
+	username = request.data["username"]
+	try:
+		Player.objects.get(username=username)
+		return HttpResponse(status=403)
+	except Player.DoesNotExist:
+		pass
+	resolve(profile.set_username(request.user, username))
+	p = Player.objects.get(pk=request.user.pk)
+	p.username = username
+	p.save()
+	return HttpResponse(status=200)
 
 
 @api_view(['GET'])
@@ -337,3 +395,15 @@ def request_game(request):
 		for member in request.user.team.members:
 			member.notify("starting game", address="ws://25.64.141.174:8765/1")
 	return HttpResponse("ws://25.64.141.174:8765/1")
+
+
+@api_view(['GET'])
+@permission_classes((permissions.AllowAny, ))
+def create_guest(request):
+	print("fart")
+	username = "Guest" + str(math.floor(random.random() * 1000))
+	user = Player.objects.create(username=username)
+	user.save()
+	profile.create_profile(user, username)
+	token, created = Token.objects.get_or_create(user=user)
+	return JsonResponse({"token": token.key}, status=200)

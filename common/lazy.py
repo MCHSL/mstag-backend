@@ -143,6 +143,8 @@ class LazyPlayer:
 		self._last_friend_invite_lookup: float = 0
 		self._last_team_lookup: float = 0
 
+		if precached_username.startswith("____TEMP_"):
+			precached_username = ""
 		self._username: str = precached_username
 		self._kills: int = 0
 		self._wins: int = 0
