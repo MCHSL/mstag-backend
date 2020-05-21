@@ -52,6 +52,7 @@ def login_google(request):
 	    })
 	response = r.json()
 	if not ("access_token" in response):
+		print("no access token received")
 		return HttpResponse(status=500)
 	r = requests.get("https://www.googleapis.com/userinfo/v2/me",
 	                 params={"access_token": response["access_token"]})
@@ -59,6 +60,7 @@ def login_google(request):
 	email = response["email"]
 	user, created = Player.objects.get_or_create(email=email)
 	if (created):
+		print("new user, create username")
 		user.username = "____TEMP_" + str(math.floor(random.random() * 10000))
 		user.save()
 		profile.create_profile(user, "")
