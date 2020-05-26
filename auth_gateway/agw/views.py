@@ -121,8 +121,10 @@ def get_perf(request):
 @permission_classes((permissions.AllowAny, ))
 def get_config(request):
 	return JsonResponse({
-	    'chat': 'ws://25.64.141.174:8768',
-	    'notification': 'ws://25.64.141.174:8767'
+	    'chat':
+	    'wss://micromstag.westeurope.cloudapp.azure.com:8868',
+	    'notification':
+	    'wss://micromstag.westeurope.cloudapp.azure.com:8867'
 	})
 
 
