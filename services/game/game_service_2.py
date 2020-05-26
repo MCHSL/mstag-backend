@@ -1,4 +1,3 @@
-from __future__ import annotations
 from typing import *
 
 import sys
@@ -59,8 +58,8 @@ class Client:
 		self.tank: Tank
 		self.team: int = 0
 
-	async def assign(self,
-	                 websocket: websockets.WebSocketClientProtocol) -> Client:
+	async def assign(
+	    self, websocket: websockets.WebSocketClientProtocol) -> "Client":
 
 		self.websocket = websocket
 		token: str = json.loads(await self.websocket.recv())
@@ -274,7 +273,7 @@ class PhysicsSimulation:
 
 
 class Lobby:
-	def __init__(self, lid: int, manager: LobbyManager):
+	def __init__(self, lid: int, manager: "LobbyManager"):
 		self.id: int = lid
 		self.manager: LobbyManager = manager
 		self.clients: Dict[int, Client] = {}
