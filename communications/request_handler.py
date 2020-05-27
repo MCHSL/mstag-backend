@@ -62,7 +62,7 @@ class ServiceRequestHandler:
 		    #pika.URLParameters('amqp://ccceuqky:aPYn9wF8CZe6f0VgBWtvpmqA0kvx_Gqz@hare.rmq.cloudamqp.com/ccceuqky'))
 		    pika.URLParameters('amqp://guest:guest@localhost/?heartbeat=30'))
 		channel = connection.channel()
-		channel.basic_qos(prefetch_count=5)
+		channel.basic_qos(prefetch_count=20)
 
 		for i, key in enumerate(self.keys):
 			state = channel.queue_declare(queue=key)
@@ -128,6 +128,7 @@ class AsyncServiceRequestHandler:
 		    'amqp://guest:guest@localhost/?heartbeat=30')
 		added_number = False
 		channel = await connection.channel()
+		await channel.set_qos(prefetch_count=20)
 		for i, key in enumerate(self.keys):
 			queue = await channel.declare_queue(key)
 			if i == 0:
