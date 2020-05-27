@@ -397,8 +397,12 @@ def request_game(request):
 			return HttpResponse(status=403)
 		resolve(game.reserve_lobby(request.user.team.members))
 		for member in request.user.team.members:
-			member.notify("starting game", address="ws://25.64.141.174:8765/1")
-	return HttpResponse("ws://25.64.141.174:8765/1")
+			member.notify(
+			    "starting game",
+			    address="wss://micromstag.westeurope.cloudapp.azure.com:8865/1"
+			)
+	return HttpResponse(
+	    "wss://micromstag.westeurope.cloudapp.azure.com:8865/1")
 
 
 @api_view(['GET'])
