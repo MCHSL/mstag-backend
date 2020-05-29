@@ -21,7 +21,6 @@ __init()
 
 
 def __send_log(level, message):
-	return
 	global __channel
 	try:
 		caller = getframeinfo(stack()[2][0])
