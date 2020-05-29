@@ -51,6 +51,7 @@ def login_google(request):
 	        "redirect_uri": "http://localhost:8080/oauth/google"
 	    })
 	response = r.json()
+	print(response)
 	if not ("access_token" in response):
 		print("no access token received")
 		return HttpResponse(status=500)
