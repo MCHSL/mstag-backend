@@ -48,7 +48,7 @@ def login_google(request):
 	        "client_secret": "jMOyAcEoUgsj-QyNpYlg0G5l",
 	        "code": code,
 	        "grant_type": "authorization_code",
-	        "redirect_uri": "http://localhost:8080/oauth/google"
+	        "redirect_uri": "http://localhost:8080"
 	    })
 	response = r.json()
 	print(response)
