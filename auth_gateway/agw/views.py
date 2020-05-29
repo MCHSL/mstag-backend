@@ -39,7 +39,6 @@ def lazy_user(fn):
 def login_google(request):
 	log_info(f"Logging in via google")
 	code = request.data["code"]
-	print(code)
 	r = requests.post(
 	    "https://oauth2.googleapis.com/token",
 	    data={
@@ -48,10 +47,9 @@ def login_google(request):
 	        "client_secret": "jMOyAcEoUgsj-QyNpYlg0G5l",
 	        "code": code,
 	        "grant_type": "authorization_code",
-	        "redirect_uri": "http://localhost:8080"
+	        "redirect_uri": "https://mstag.netlify.app"
 	    })
 	response = r.json()
-	print(response)
 	if not ("access_token" in response):
 		print("no access token received")
 		return HttpResponse(status=500)
