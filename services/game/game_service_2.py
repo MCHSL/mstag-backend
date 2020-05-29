@@ -316,7 +316,7 @@ class Lobby:
 				await cli.send(msg)
 
 	async def schedule_turn_finish(self):
-		self.turn_timer_task = asyncio.create_task(self.wait_and_finish())
+		self.turn_timer_task = asyncio.ensure_future(self.wait_and_finish())
 
 	async def wait_and_finish(self):
 		try:
@@ -507,7 +507,7 @@ class Lobby:
 		    "have": len(self.clients),
 		    "need": self.required_players
 		})
-		asyncio.create_task(self.check_readiness())
+		asyncio.ensure_future(self.check_readiness())
 		await client.loop()
 
 	async def on_message(self, client: Client, msg: Dict) -> None:
@@ -525,7 +525,7 @@ class Lobby:
 					    "client": client
 					}
 					self.projectile_launches[client.id] = launch_data
-					asyncio.create_task(self.check_fast_track_finish())
+					asyncio.ensure_future(self.check_fast_track_finish())
 
 
 class PlayerReservation:
