@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/v1/user/<int:user>/', views.get_user_profile),
     path('api/v1/users/check_exists/<str:name>/', views.check_user_exists),
     path('api/v1/users/set_username/', views.set_username),
+    path('api/v1/users/online/', views.get_players_online),
     #
     path('api/v1/get_perf/', views.get_perf),
     path('api/v1/error/', views.make_error),

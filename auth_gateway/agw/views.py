@@ -15,9 +15,8 @@ from rest_framework.authtoken.models import Token
 from agw.models import Player  # type: ignore
 from common.lazy import LazyPlayer, LazyTeam
 from common.logger import *
-from communications import chat, game, profile, team
+from communications import chat, game, profile, team, presence
 from communications.notifications import send_notification
-from communications.presence import is_online
 from communications.rpc import resolve
 
 sys.path.append("..")
@@ -266,6 +265,12 @@ def get_team(request):
 		     ])  # Parallel profile lookup
 		leader = teammates.pop()
 		return JsonResponse({"leader": leader, "members": teammates})
+
+
+@api_view(['GET'])
+@permission_classes((permissions.AllowAny, ))
+def get_player_count(request):
+	return JsonResponse({"count": resolve(presence.playercount())}, status=200)
 
 
 @api_view(['GET'])

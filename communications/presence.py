@@ -13,3 +13,7 @@ __rpc = RPCClient("presence_queue")
 @convert_to_pk
 def is_online(id: int) -> RPCRequest:
 	return __rpc.request({"type": "is_online", "id": id})
+
+
+def playercount() -> RPCRequest:
+	return __rpc.request({"type": "player_count"})

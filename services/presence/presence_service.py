@@ -21,6 +21,9 @@ async def on_request(msg):
 	if msg["type"] == "is_online":
 		return msg["id"] in clients
 
+	elif msg["type"] == "player_count":
+		return len(clients)
+
 
 async def handle_websockets(websocket, path):
 	try:
