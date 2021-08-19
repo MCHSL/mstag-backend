@@ -3,6 +3,7 @@ import sys
 import requests
 import random
 import math
+import os
 
 from django.core.cache import caches
 from django.http import HttpResponse, JsonResponse
@@ -41,9 +42,8 @@ def login_google(request):
 	r = requests.post(
 	    "https://oauth2.googleapis.com/token",
 	    data={
-	        "client_id":
-	        "758097201499-i301bgsnrfiu846gbuahl2kcq4qtmuht.apps.googleusercontent.com",
-	        "client_secret": "jMOyAcEoUgsj-QyNpYlg0G5l",
+	        "client_id": os.environ["google_oauth_client_id"],
+	        "client_secret": os.environ["google_oauth_client_secret"],
 	        "code": code,
 	        "grant_type": "authorization_code",
 	        "redirect_uri": "https://mstag.netlify.app"
